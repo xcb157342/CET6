@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>打卡系统</title>
+    <style>
+        .countdown {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font-size: 16px;
+            z-index: 1000;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 60px auto 20px;
+            /* 增加顶部边距，为固定定位的倒计时留出空间 */
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"],
+        input[type="datetime-local"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #preview {
+            max-width: 200px;
+            margin-top: 10px;
+        }
+
+        .records {
+            margin-top: 20px;
+        }
+
+        .record-item {
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .record-image {
+            max-width: 200px;
+            margin-top: 10px;
+        }
+
+        .action-buttons {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-buttons button {
+            flex: 1;
+        }
+
+        #importInput {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="countdown" class="countdown"></div>
+    <div class="container">
+        <h2>每日打卡</h2>
+        <div class="action-buttons">
+            <button onclick="exportData()">导出数据</button>
+            <input type="file" id="importInput" accept=".json" onchange="importData(event)">
+            <button onclick="document.getElementById('importInput').click()">导入数据</button>
+        </div>
+        <form id="checkInForm">
+            <div class="form-group">
+                <label for="content">打卡内容：</label>
+                <textarea id="content" required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="completionTime">完成时间：</label>
+                <input type="datetime-local" id="completionTime" required>
+            </div>
+
+            <div class="form-group">
+                <label for="image">上传图片：</label>
+                <input type="file" id="image" accept="image/*" required>
+                <img id="preview">
+            </div>
+
+            <button type="submit">打卡</button>
+        </form>
+
+
+        <div class="records">
+            <h3>打卡记录</h3>
+            <div id="recordsList"></div>
+        </div>
+    </div>
+
+    <script>
+        // 倒计时功能
+        function updateCountdown() {
+            const targetDate = new Date('2024-12-14T00:00:00');
+            const now = new Date();
+            const diff = targetDate - now;
+
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+            document.getElementById('countdown').innerText =
+                `距离2024年12月14日还有 ${days}天 ${hours}小时`;
+        }
+
+        // 每小时更新一次倒计时
+        updateCountdown();
+        setInterval(updateCountdown, 1000 * 60 * 60);
+
+        // 从localStorage加载打卡记录
+        function loadRecords() {
+            const records = JSON.parse(localStorage.getItem('checkInRecords') || '[]');
+            const recordsList = document.getElementById('recordsList');
+            recordsList.innerHTML = '';
+
+            records.forEach((record, index) => {
+                const recordDiv = document.createElement('div');
+                recordDiv.className = 'record-item';
+                recordDiv.innerHTML = `
+                    <p><strong>内容：</strong>${record.content}</p>
+                    <p><strong>时间：</strong>${new Date(record.completionTime).toLocaleString()}</p>
+                    <img src="${record.imageData}" class="record-image" alt="打卡图片">
+                    <button onclick="deleteRecord(${index})">删除</button>
+                `;
+                recordsList.appendChild(recordDiv);
+            });
+        }
+
+        // 删除记录
+        function deleteRecord(index) {
+            const records = JSON.parse(localStorage.getItem('checkInRecords') || '[]');
+            records.splice(index, 1);
+            localStorage.setItem('checkInRecords', JSON.stringify(records));
+            loadRecords();
+        }
+
+        // 图片预览功能
+        document.getElementById('image').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    document.getElementById('preview').src = e.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 表单提交处理
+        document.getElementById('checkInForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const content = document.getElementById('content').value;
+            const completionTime = document.getElementById('completionTime').value;
+            const imageFile = document.getElementById('image').files[0];
+
+            try {
+                // 将图片转换为Base64
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const imageData = e.target.result;
+
+                    // 获取现有记录
+                    const records = JSON.parse(localStorage.getItem('checkInRecords') || '[]');
+
+                    // 添加新记录
+                    records.unshift({
+                        content,
+                        completionTime,
+                        imageData,
+                        timestamp: new Date().getTime()
+                    });
+
+                    // 保存记录
+                    localStorage.setItem('checkInRecords', JSON.stringify(records));
+
+                    // 更新显示
+                    loadRecords();
+
+                    // 重置表单
+                    document.getElementById('checkInForm').reset();
+                    document.getElementById('preview').src = '';
+
+                    alert('打卡成功！');
+                };
+                reader.readAsDataURL(imageFile);
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('打卡失败，请重试');
+            }
+        });
+        function exportData() {
+            const records = JSON.parse(localStorage.getItem('checkInRecords') || '[]');
+            if (records.length === 0) {
+                alert('没有可导出的数据！');
+                return;
+            }
+
+            // 创建要导出的数据对象
+            const exportData = {
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                records: records
+            };
+
+            // 转换为JSON字符串
+            const jsonString = JSON.stringify(exportData, null, 2);
+
+            // 创建Blob对象
+            const blob = new Blob([jsonString], { type: 'application/json' });
+
+            // 创建下载链接
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `打卡记录_${new Date().toLocaleDateString()}.json`;
+
+            // 触发下载
+            document.body.appendChild(a);
+            a.click();
+
+            // 清理
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 导入数据
+        async function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const importedData = JSON.parse(text);
+
+                // 验证导入的数据格式
+                if (!importedData.records || !Array.isArray(importedData.records)) {
+                    throw new Error('无效的数据格式');
+                }
+
+                // 确认是否合并数据
+                const existingRecords = JSON.parse(localStorage.getItem('checkInRecords') || '[]');
+                const confirmMessage = existingRecords.length > 0 ?
+                    '是否将导入的数据与现有数据合并？\n点击"确定"合并数据，点击"取消"替换现有数据。' :
+                    '确认导入数据？';
+
+                if (confirm(confirmMessage)) {
+                    if (existingRecords.length > 0) {
+                        // 合并数据，去重
+                        const mergedRecords = [...existingRecords];
+
+                        importedData.records.forEach(importedRecord => {
+                            // 检查是否已存在相同时间戳的记录
+                            const exists = mergedRecords.some(
+                                record => record.timestamp === importedRecord.timestamp
+                            );
+                            if (!exists) {
+                                mergedRecords.push(importedRecord);
+                            }
+                        });
+
+                        // 按时间戳排序
+                        mergedRecords.sort((a, b) => b.timestamp - a.timestamp);
+
+                        localStorage.setItem('checkInRecords', JSON.stringify(mergedRecords));
+                    } else {
+                        // 直接使用导入的数据
+                        localStorage.setItem('checkInRecords', JSON.stringify(importedData.records));
+                    }
+                } else if (existingRecords.length > 0) {
+                    // 替换现有数据
+                    localStorage.setItem('checkInRecords', JSON.stringify(importedData.records));
+                }
+
+                // 刷新显示
+                loadRecords();
+                alert('数据导入成功！');
+
+            } catch (error) {
+                console.error('导入错误:', error);
+                alert('导入失败：' + error.message);
+            }
+
+            // 重置文件输入
+            event.target.value = '';
+        }
+
+        // 页面加载时显示记录
+        loadRecords();
+    </script>
+</body>
+
+</html>
